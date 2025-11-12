@@ -1,6 +1,9 @@
+import json
 import math
 import random
+import tempfile
 import unittest
+from pathlib import Path
 
 from scl.compressors.limited_depth_huffman import (
     LimitedDepthHuffmanDecoder,
@@ -80,6 +83,26 @@ class LimitedDepthHuffmanTest(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             _compute_code_lengths(prob_dist, max_depth=2)
+
+    def test_export_tree_json(self):
+        prob_dist = ProbabilityDist({"A": 0.5, "B": 0.3, "C": 0.2})
+        encoder = LimitedDepthHuffmanEncoder(prob_dist, max_depth=3)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "tree.json"
+            encoder.export_tree_json(str(output_path))
+            with open(output_path, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+
+        self.assertIn("tree", payload)
+        tree_nodes = payload["tree"]
+        self.assertGreaterEqual(len(tree_nodes), len(prob_dist.alphabet))
+        root = tree_nodes[0]
+        self.assertAlmostEqual(root["weight"], 1.0, places=6)
+        leaf_ids = {
+            node["id"] for node in tree_nodes if "left" not in node and "right" not in node
+        }
+        self.assertTrue(set(prob_dist.alphabet).issubset(leaf_ids))
 
 
 class LimitedDepthHuffmanExtraTests(unittest.TestCase):

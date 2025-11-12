@@ -1,7 +1,8 @@
+import json
 import math
 from dataclasses import dataclass, field
 from itertools import count
-from typing import Any, Dict, Iterable, List, Mapping, Sequence
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
 
 from scl.compressors.prefix_free_compressors import (
     PrefixFreeDecoder,
@@ -140,11 +141,85 @@ class LimitedDepthHuffmanEncoder(PrefixFreeEncoder):
     """Limited-depth Huffman encoder built from the package-merge codebook."""
 
     def __init__(self, prob_dist: ProbabilityDist, max_depth: int):
+        self.prob_dist = prob_dist
+        self.max_depth = max_depth
         lengths = _compute_code_lengths(prob_dist, max_depth)
         self.encoding_table = _build_canonical_codes(lengths, prob_dist.alphabet)
+        self.tree = PrefixFreeTree.build_prefix_free_tree_from_code(
+            self.encoding_table
+        )
 
     def encode_symbol(self, s) -> BitArray:
         return self.encoding_table[s]
+
+    def export_tree_json(
+        self,
+        output_path: str,
+        symbol_weights: Optional[Mapping[Any, float]] = None,
+    ) -> None:
+        """
+        Serialize the Huffman tree so the frontend can visualize it.
+
+        Args:
+            output_path: destination path for the JSON payload.
+            symbol_weights: optional explicit weights per symbol. By default we
+                reuse the probabilities passed into the encoder.
+        """
+        if self.tree is None:
+            raise ValueError("Tree not available; build the encoder before exporting.")
+
+        weights = (
+            dict(symbol_weights)
+            if symbol_weights is not None
+            else {s: self.prob_dist.probability(s) for s in self.prob_dist.alphabet}
+        )
+
+        missing = set(self.prob_dist.alphabet) - set(weights)
+        if missing:
+            raise ValueError(f"Missing weights for symbols: {missing}")
+
+        nodes: List[Dict[str, Any]] = []
+
+        def _collect(node, depth: int):
+            if node is None:
+                return None, 0.0
+
+            if node.is_leaf_node:
+                symbol = node.id
+                label = str(symbol)
+                weight = float(weights[symbol])
+                nodes.append(
+                    {
+                        "id": label,
+                        "weight": weight,
+                        "depth": depth,
+                    }
+                )
+                return label, weight
+
+            left_label, left_weight = _collect(node.left_child, depth + 1)
+            right_label, right_weight = _collect(node.right_child, depth + 1)
+
+            child_labels = [lbl for lbl in [left_label, right_label] if lbl is not None]
+            label = "".join(sorted(child_labels)) if child_labels else f"node_{depth}"
+            weight = left_weight + right_weight
+            nodes.append(
+                {
+                    "id": label,
+                    "weight": float(weight),
+                    "depth": depth,
+                    "left": left_label,
+                    "right": right_label,
+                }
+            )
+            return label, weight
+
+        _collect(self.tree.root_node, 0)
+        ordered_nodes = list(reversed(nodes))
+        payload = {"tree": ordered_nodes}
+
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
 
 
 class LimitedDepthHuffmanDecoder(PrefixFreeDecoder):
