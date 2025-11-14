@@ -87,9 +87,15 @@ body {
 
 .controls-panel {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   align-items: end;
   gap: 1.5rem;
+}
+
+@media (min-width: 1000px) {
+  .controls-panel {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
 }
 
 .control-group {
@@ -109,11 +115,13 @@ body {
 }
 
 .control-group select,
-.control-group input[type='file'] {
+.control-group input[type='file'],
+.control-group input[type='text'] {
   font-family: inherit;
 }
 
-select {
+select,
+input[type='text'] {
   appearance: none;
   background: #f5f4ff;
   border: 1px solid rgba(126, 129, 182, 0.3);
@@ -124,7 +132,8 @@ select {
   box-shadow: 0 16px 30px -28px rgba(54, 58, 99, 0.7);
 }
 
-select:focus {
+select:focus,
+input[type='text']:focus {
   outline: 2px solid rgba(129, 118, 255, 0.4);
   outline-offset: 1px;
 }
@@ -178,6 +187,8 @@ input[type='range'] {
 
 .run-group {
   align-items: flex-end;
+  flex-shrink: 0;
+  min-width: fit-content;
 }
 
 .content-grid {
@@ -199,55 +210,6 @@ input[type='range'] {
   border-radius: 20px;
   background: radial-gradient(circle at top, rgba(120, 106, 255, 0.08), transparent 60%), #f6f7ff;
   border: 1px dashed rgba(126, 129, 182, 0.35);
-}
-
-.tree-node {
-  position: absolute;
-  width: 80px;
-  height: 80px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 600;
-  background: linear-gradient(150deg, #6d5aff 0%, #8f7cfe 100%);
-  color: white;
-  box-shadow: 0 18px 40px -28px rgba(86, 80, 227, 0.9);
-}
-
-.tree-node-root {
-  top: 28px;
-  left: calc(50% - 40px);
-}
-
-.tree-node-left {
-  bottom: 38px;
-  left: calc(35% - 40px);
-}
-
-.tree-node-right {
-  bottom: 38px;
-  right: calc(35% - 40px);
-}
-
-.tree-branch {
-  position: absolute;
-  width: 2px;
-  background: linear-gradient(180deg, rgba(111, 97, 255, 0.45), rgba(111, 97, 255, 0));
-  height: 140px;
-  top: 105px;
-}
-
-.tree-branch-left {
-  left: 45%;
-  transform: rotate(27deg);
-  transform-origin: top;
-}
-
-.tree-branch-right {
-  right: 45%;
-  transform: rotate(-27deg);
-  transform-origin: top;
 }
 
 .side-column {
@@ -320,6 +282,25 @@ input[type='range'] {
   font-weight: 600;
 }
 
+.placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #7a7c98;
+  font-size: 0.95rem;
+}
+
+.error {
+  padding: 1rem;
+  color: #b3261e;
+  background: #ffebee;
+  border-radius: 12px;
+  margin: 1rem;
+  font-size: 0.9rem;
+}
+
 @media (max-width: 1080px) {
   .content-grid {
     grid-template-columns: 1fr;
@@ -348,19 +329,116 @@ input[type='range'] {
   .tree-canvas {
     min-height: 260px;
   }
+}
 
-  .tree-node {
-    width: 64px;
-    height: 64px;
-  }
+/* Step controls for adaptive mode */
+.tree-steps {
+  margin-top: 0.8rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.9rem;
+  color: #555976;
+}
 
-  .tree-node-root {
-    top: 24px;
-    left: calc(50% - 32px);
-  }
+.ghost-btn {
+  border-radius: 999px;
+  border: 1px solid rgba(126, 129, 182, 0.4);
+  background: rgba(245, 244, 255, 0.9);
+  padding: 0.35rem 0.9rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
 
-  .tree-node-left,
-  .tree-node-right {
-    bottom: 30px;
+.ghost-btn:hover {
+  background: #ebe8ff;
+}
+
+.step-label {
+  font-weight: 600;
+}
+
+/* Bitstream display */
+.bitstream-box {
+  margin-top: 0.9rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: 14px;
+  background: #f5f4ff;
+  border: 1px solid rgba(126, 129, 182, 0.3);
+  font-size: 0.8rem;
+}
+
+.bitstream-label {
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+  color: #555976;
+}
+
+.bitstream-content {
+  max-height: 120px;
+  overflow: auto;
+  line-height: 1.4;
+}
+
+/* ADDED: adaptive animation */
+.adaptive-edge-new {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: adaptiveDrawEdge 0.4s ease-out forwards;
+}
+
+.adaptive-edge-old {
+  stroke-dasharray: none;
+}
+
+@keyframes adaptiveDrawEdge {
+  to {
+    stroke-dashoffset: 0;
   }
 }
+
+.adaptive-node-new {
+  opacity: 0;
+  transform-origin: center;
+  animation: adaptivePopNode 0.25s ease-out forwards;
+}
+
+.adaptive-node-old {
+  opacity: 1;
+}
+
+@keyframes adaptivePopNode {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.step-list {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.step-chip {
+  border: 1px solid #d0d0e5;
+  background: #f5f5ff;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.step-chip-active {
+  background: #9a8bff;
+  color: white;
+  border-color: #9a8bff;
+}
+

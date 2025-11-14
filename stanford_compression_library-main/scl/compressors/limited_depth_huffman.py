@@ -152,74 +152,138 @@ class LimitedDepthHuffmanEncoder(PrefixFreeEncoder):
     def encode_symbol(self, s) -> BitArray:
         return self.encoding_table[s]
 
-    def export_tree_json(
-        self,
-        output_path: str,
-        symbol_weights: Optional[Mapping[Any, float]] = None,
-    ) -> None:
-        """
-        Serialize the Huffman tree so the frontend can visualize it.
+    # def export_tree_json(
+    #     self,
+    #     output_path: str,
+    #     symbol_weights: Optional[Mapping[Any, float]] = None,
+    # ) -> None:
+    #     """
+    #     Serialize the Huffman tree so the frontend can visualize it.
 
-        Args:
-            output_path: destination path for the JSON payload.
-            symbol_weights: optional explicit weights per symbol. By default we
-                reuse the probabilities passed into the encoder.
-        """
+    #     Args:
+    #         output_path: destination path for the JSON payload.
+    #         symbol_weights: optional explicit weights per symbol. By default we
+    #             reuse the probabilities passed into the encoder.
+    #     """
+    #     if self.tree is None:
+    #         raise ValueError("Tree not available; build the encoder before exporting.")
+
+    #     weights = (
+    #         dict(symbol_weights)
+    #         if symbol_weights is not None
+    #         else {s: self.prob_dist.probability(s) for s in self.prob_dist.alphabet}
+    #     )
+
+    #     missing = set(self.prob_dist.alphabet) - set(weights)
+    #     if missing:
+    #         raise ValueError(f"Missing weights for symbols: {missing}")
+
+    #     nodes: List[Dict[str, Any]] = []
+
+    #     def _collect(node, depth: int):
+    #         if node is None:
+    #             return None, 0.0
+
+    #         if node.is_leaf_node:
+    #             symbol = node.id
+    #             label = str(symbol)
+    #             weight = float(weights[symbol])
+    #             nodes.append(
+    #                 {
+    #                     "id": label,
+    #                     "weight": weight,
+    #                     "depth": depth,
+    #                 }
+    #             )
+    #             return label, weight
+
+    #         left_label, left_weight = _collect(node.left_child, depth + 1)
+    #         right_label, right_weight = _collect(node.right_child, depth + 1)
+
+    #         child_labels = [lbl for lbl in [left_label, right_label] if lbl is not None]
+    #         label = "".join(sorted(child_labels)) if child_labels else f"node_{depth}"
+    #         weight = left_weight + right_weight
+    #         nodes.append(
+    #             {
+    #                 "id": label,
+    #                 "weight": float(weight),
+    #                 "depth": depth,
+    #                 "left": left_label,
+    #                 "right": right_label,
+    #             }
+    #         )
+    #         return label, weight
+
+    #     _collect(self.tree.root_node, 0)
+    #     ordered_nodes = list(reversed(nodes))
+    #     payload = {"tree": ordered_nodes}
+    #     return payload
+
+    #     # with open(output_path, "w", encoding="utf-8") as f:
+    #     #     json.dump(payload, f, indent=2)
+
+    def export_tree_json(self, symbol_weights=None):
         if self.tree is None:
-            raise ValueError("Tree not available; build the encoder before exporting.")
+            raise ValueError("Tree not built")
 
-        weights = (
-            dict(symbol_weights)
-            if symbol_weights is not None
-            else {s: self.prob_dist.probability(s) for s in self.prob_dist.alphabet}
-        )
+        if symbol_weights is None:
+            symbol_weights = {
+                s: float(self.prob_dist.probability(s))
+                for s in self.prob_dist.alphabet
+            }
 
-        missing = set(self.prob_dist.alphabet) - set(weights)
-        if missing:
-            raise ValueError(f"Missing weights for symbols: {missing}")
+        nodes = []
+        internal_counter = 1
+        step_counter = 0
 
-        nodes: List[Dict[str, Any]] = []
-
-        def _collect(node, depth: int):
-            if node is None:
-                return None, 0.0
+        def _collect(node, depth):
+            nonlocal internal_counter, step_counter
 
             if node.is_leaf_node:
-                symbol = node.id
-                label = str(symbol)
-                weight = float(weights[symbol])
-                nodes.append(
-                    {
-                        "id": label,
-                        "weight": weight,
-                        "depth": depth,
-                    }
-                )
-                return label, weight
+                sym = node.id
+                w = float(symbol_weights[sym])
+                nid = sym
 
-            left_label, left_weight = _collect(node.left_child, depth + 1)
-            right_label, right_weight = _collect(node.right_child, depth + 1)
-
-            child_labels = [lbl for lbl in [left_label, right_label] if lbl is not None]
-            label = "".join(sorted(child_labels)) if child_labels else f"node_{depth}"
-            weight = left_weight + right_weight
-            nodes.append(
-                {
-                    "id": label,
-                    "weight": float(weight),
+                nodes.append({
+                    "id": nid,
+                    "symbol": nid,
+                    "weight": w,
                     "depth": depth,
-                    "left": left_label,
-                    "right": right_label,
-                }
-            )
-            return label, weight
+                    "build_index": 0,
+                })
+                return nid, w
 
-        _collect(self.tree.root_node, 0)
-        ordered_nodes = list(reversed(nodes))
-        payload = {"tree": ordered_nodes}
+            left_id, left_w = _collect(node.left_child, depth + 1)
+            right_id, right_w = _collect(node.right_child, depth + 1)
 
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2)
+            total_w = left_w + right_w
+            step_counter += 1
+
+            if depth == 0:
+                nid = "*"
+            else:
+                nid = f"N{internal_counter}"
+                internal_counter += 1
+
+            nodes.append({
+                "id": nid,
+                "weight": total_w,
+                "depth": depth,
+                "left": left_id,
+                "right": right_id,
+                "build_index": step_counter,
+            })
+
+            return nid, total_w
+
+        root_id, _ = _collect(self.tree.root_node, 0)
+        ordered = list(reversed(nodes))
+
+        return {
+            "root": root_id,
+            "tree": ordered,
+            "max_step": step_counter,
+        }
 
 
 class LimitedDepthHuffmanDecoder(PrefixFreeDecoder):
