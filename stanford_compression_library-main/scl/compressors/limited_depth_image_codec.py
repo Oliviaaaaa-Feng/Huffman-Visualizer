@@ -11,8 +11,8 @@ The resulting bitstreams are stored inside a tiny custom container so we can
 reconstruct the image later without touching the JPEG container format.
 
 Usage:
-    python -m scl.compressors.limited_depth_image_codec encode lena.png lena.ldhc --quality 85
-    python -m scl.compressors.limited_depth_image_codec decode lena.ldhc lena_recon.png
+    python -m scl.compressors.limited_depth_image_codec encode input.jpg output.ldhc --quality 85
+    python -m scl.compressors.limited_depth_image_codec decode output.ldhc recon.png
 """
 
 from __future__ import annotations
@@ -318,7 +318,7 @@ def encode_image(
     input_path: Path,
     output_path: Path,
     *,
-    quality: int = 75,
+    quality: int = 85,
     max_depth: int = 16,
     lossless: bool = False,
 ) -> Dict:
@@ -597,7 +597,7 @@ def _parse_args() -> argparse.Namespace:
     enc_parser = subparsers.add_parser("encode", help="Encode an image into the custom container")
     enc_parser.add_argument("input_image", type=Path)
     enc_parser.add_argument("output_file", type=Path)
-    enc_parser.add_argument("--quality", type=int, default=75, help="JPEG-like quality factor (1-100)")
+    enc_parser.add_argument("--quality", type=int, default=85, help="JPEG-like quality factor (1-100)")
     enc_parser.add_argument("--max-depth", type=int, default=16, help="Max Huffman tree depth")
     enc_parser.add_argument(
         "--lossless",
