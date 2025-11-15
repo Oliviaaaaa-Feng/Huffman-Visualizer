@@ -1,14 +1,13 @@
 from scl.utils.tree_utils import BinaryNode
 from scl.compressors.prefix_free_compressors import PrefixFreeTree
 
-
 class VitterNode(BinaryNode):
     def __init__(self, symbol=None, weight=0):
         super().__init__(id=symbol)
         self.weight = weight
         self.parent = None
-        self.prev = None  # linked list previous (implicit order)
-        self.next = None  # linked list next (implicit order)
+        self.prev = None # linked list previous (implicit order)
+        self.next = None # linked list next (implicit order)
 
     def is_nyt(self):
         return (self.weight == 0) and (self.is_leaf_node)
@@ -20,10 +19,10 @@ class VitterAdaptiveHuffmanTree(PrefixFreeTree):
         self.symbol_bits = symbol_bits
         self.root_node = VitterNode()
         self.nyt = self.root_node
-        self.leaves = {}  # symbol -> leaf node
+        self.leaves = {}        # symbol -> leaf node
         self.blocks = {0: (self.root_node, self.root_node)}  # weight -> (head, tail)
-        self.head = self.root_node  # linked list head (lowest order)
-        self.tail = self.root_node  # linked list tail (highest order)
+        self.head = self.root_node   # linked list head (lowest order)
+        self.tail = self.root_node   # linked list tail (highest order)
 
     # ----------------------------------------------------------
     # Linked-list and block helpers
@@ -65,12 +64,11 @@ class VitterAdaptiveHuffmanTree(PrefixFreeTree):
         depth = 0
         while node:
             depth += 1
-
             # Check if block exists before accessing
             if node.weight not in self.blocks:
                 # This shouldn't happen, but if it does, add node to block first
                 self.add_to_block(node)
-
+                
             leader = self.blocks[node.weight][1]  # tail of block
             # swap with leader if necessary and not parent
             if leader is not node and leader is not node.parent:
@@ -92,7 +90,7 @@ class VitterAdaptiveHuffmanTree(PrefixFreeTree):
         pa, pb = a.parent, b.parent
         if pa is None or pb is None:
             return  # don't swap root
-
+          
         # Check if nodes are in ancestor-descendant relationship
         # Check if a is an ancestor of b
         temp = b.parent
@@ -147,7 +145,7 @@ class VitterAdaptiveHuffmanTree(PrefixFreeTree):
             self.tail = a
 
     # ----------------------------------------------------------
-    # Encode / Decode helpers
+    # Encode / Decode
     # ----------------------------------------------------------
     def get_code(self, node):
         bits = []
