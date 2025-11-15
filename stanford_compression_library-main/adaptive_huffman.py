@@ -1,16 +1,16 @@
-from scl.compressors.vitter_adaptive_huffman import VitterAdaptiveHuffmanEncoder, VitterAdaptiveHuffmanDecoder
+from scl.compressors.vitter_adaptive_huffman_2 import VitterAdaptiveHuffmanEncoder, VitterAdaptiveHuffmanDecoder
 import time
 
 if __name__ == "__main__":
-    text = b"abcb"
+    test_file = "stanford_compression_library-main/scl/sherlock_ascii.txt"
+    with open(test_file, "rb") as f:
+        text = f.read()
         
     encoder = VitterAdaptiveHuffmanEncoder()
     start_time = time.time()
     bits = encoder.encode(text)
     end_time = time.time()
     encode_time = end_time - start_time
-
-    # encoder.print_tree()
 
     start_time = time.time()
     decoder = VitterAdaptiveHuffmanDecoder()
