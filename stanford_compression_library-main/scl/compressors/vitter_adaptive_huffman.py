@@ -8,7 +8,7 @@ class VitterNode(BinaryNode):
         self.parent = None
         self.prev = None # linked list previous (implicit order)
         self.next = None # linked list next (implicit order)
-    
+
     def is_nyt(self):
         return (self.weight == 0) and (self.is_leaf_node)
 
@@ -64,12 +64,11 @@ class VitterAdaptiveHuffmanTree(PrefixFreeTree):
         depth = 0
         while node:
             depth += 1
-            
             # Check if block exists before accessing
             if node.weight not in self.blocks:
                 # This shouldn't happen, but if it does, add node to block first
                 self.add_to_block(node)
-            
+                
             leader = self.blocks[node.weight][1]  # tail of block
             # swap with leader if necessary and not parent
             if leader is not node and leader is not node.parent:
@@ -91,7 +90,7 @@ class VitterAdaptiveHuffmanTree(PrefixFreeTree):
         pa, pb = a.parent, b.parent
         if pa is None or pb is None:
             return  # don't swap root
-        
+          
         # Check if nodes are in ancestor-descendant relationship
         # Check if a is an ancestor of b
         temp = b.parent
@@ -200,7 +199,7 @@ class VitterAdaptiveHuffmanTree(PrefixFreeTree):
             self.insert_after(tail, new_nyt)
             self.insert_after(new_nyt, internal)
             self.blocks[0] = (self.blocks[0][0], internal)
-        
+
         # Add leaf to weight 1 block
         if 1 not in self.blocks:
             self.blocks[1] = (leaf, leaf)
@@ -211,14 +210,70 @@ class VitterAdaptiveHuffmanTree(PrefixFreeTree):
 
         # update weights
         # Only update if internal is not the root (has a parent)
-        if internal.parent is not None:
-            self.update(internal)
-        else:
-            # If internal is the root, we still need to update the leaf
-            self.update(leaf)
+        # if internal.parent is not None:
+        #     self.update(internal)
+        # else:
+        #     # If internal is the root, we still need to update the leaf
+        #     self.update(leaf)
+        self.update(internal)
+
+    # ----------------------------------------------------------
+    # Snapshot for visualization
+    # ----------------------------------------------------------
+    def export_tree_snapshot(self):
+        if self.root_node is None:
+            raise ValueError("Tree is empty")
+
+        nodes = []
+        internal_counter = 1
+
+        def _dfs(node, depth):
+            nonlocal internal_counter
+
+            if node.is_leaf_node:
+                if node.is_nyt():
+                    nid = "NYT"
+                else:
+                    nid = str(node.id)
+                nodes.append(
+                    {
+                        "id": nid,
+                        "weight": float(node.weight),
+                        "depth": depth,
+                        "left": None,
+                        "right": None,
+                    }
+                )
+                return nid
+
+            # internal node
+            left_id = _dfs(node.left_child, depth + 1)
+            right_id = _dfs(node.right_child, depth + 1)
+
+            if depth == 0:
+                nid = "*"
+            else:
+                nid = f"N{internal_counter}"
+                internal_counter += 1
+
+            nodes.append(
+                {
+                    "id": nid,
+                    "weight": float(node.weight),
+                    "depth": depth,
+                    "left": left_id,
+                    "right": right_id,
+                }
+            )
+            return nid
+
+        root_id = _dfs(self.root_node, 0)
+        ordered = list(reversed(nodes))
+
+        return {"root": root_id, "tree": ordered}
+
 
 class VitterAdaptiveHuffmanEncoder(VitterAdaptiveHuffmanTree):
-
     def __init__(self, alphabet_size=256, symbol_bits=8):
         super().__init__(alphabet_size=alphabet_size, symbol_bits=symbol_bits)
 
@@ -233,9 +288,47 @@ class VitterAdaptiveHuffmanEncoder(VitterAdaptiveHuffmanTree):
                 bits.append(self.byte_to_bits(b))
                 self.add_symbol(b)
         return ''.join(bits)
-    
-class VitterAdaptiveHuffmanDecoder(VitterAdaptiveHuffmanTree):
 
+    def encode_with_trace(self, data: bytes):
+        bit_chunks = []
+        steps = []
+        step_idx = 0
+
+        for b in data:
+            if b in self.leaves:
+                code = self.get_code(self.leaves[b])
+                bit_chunks.append(code)
+                self.update(self.leaves[b])
+                action = "existing"
+            else:
+                code_nyt = self.get_code(self.nyt)
+                sym_bits = self.byte_to_bits(b)
+                bit_chunks.append(code_nyt + sym_bits)
+                self.add_symbol(b)
+                action = "new"
+
+            step_idx += 1
+            snapshot = self.export_tree_snapshot()
+            for n in snapshot["tree"]:
+                n["build_index"] = step_idx
+
+            steps.append(
+                {
+                    "step": step_idx,
+                    "symbol": int(b),
+                    "action": action,
+                    "tree": snapshot["tree"],
+                }
+            )
+
+        return {
+            "steps": steps,
+            "bitstream": ''.join(bit_chunks),
+            "max_step": step_idx,
+        }
+
+
+class VitterAdaptiveHuffmanDecoder(VitterAdaptiveHuffmanTree):
     def __init__(self, alphabet_size=256, symbol_bits=8):
         super().__init__(alphabet_size=alphabet_size, symbol_bits=symbol_bits)
 
@@ -268,7 +361,6 @@ class VitterAdaptiveHuffmanDecoder(VitterAdaptiveHuffmanTree):
                 self.add_symbol(sym)
                 out.append(sym)
             else:
-                
                 sym = node.id
                 out.append(sym)
                 self.update(node)
