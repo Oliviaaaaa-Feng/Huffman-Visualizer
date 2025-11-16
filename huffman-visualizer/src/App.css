@@ -244,9 +244,10 @@ input[type='range'] {
 }
 
 .metric-value {
-  font-size: 1.8rem;
-  font-weight: 700;
-  color: #403f5e;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #52508e;
+  word-break: break-word;
 }
 
 .charts-panel {

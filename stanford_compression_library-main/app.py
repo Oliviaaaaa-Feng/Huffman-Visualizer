@@ -1,15 +1,24 @@
-from fastapi import FastAPI, Form
+from fastapi import FastAPI, Form, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict
 import json
 import ast
+import base64
+import tempfile
+from pathlib import Path
 
 from scl.compressors.limited_depth_huffman import LimitedDepthHuffmanEncoder
 from scl.core.prob_dist import ProbabilityDist
-from scl.compressors.vitter_adaptive_huffman import VitterAdaptiveHuffmanEncoder
+from scl.compressors.vitter_adaptive_huffman_2 import VitterAdaptiveHuffmanEncoder
+from scl.compressors.limited_depth_image_codec import encode_image, decode_image
 
 app = FastAPI()
+
+
+def _base64_encode(data: bytes) -> str:
+    return base64.b64encode(data).decode("ascii")
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -118,3 +127,85 @@ def adaptive_preview(
             step["root"] = id_map[step["root"]]
 
     return JSONResponse(trace)
+
+
+@app.post("/api/limited-depth/image/encode")
+async def limited_depth_image_encode(
+    image: UploadFile = File(...),
+    quality: int = 75,
+    max_depth: int = 16,
+    lossless: bool = False,
+):
+    payload = await image.read()
+    if not payload:
+        raise HTTPException(status_code=400, detail="Empty image payload")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir_path = Path(tmpdir)
+        input_path = tmpdir_path / (image.filename or "upload.img")
+        output_path = tmpdir_path / "compressed.ldhc"
+        input_path.write_bytes(payload)
+
+        header = encode_image(
+            input_path,
+            output_path,
+            quality=quality,
+            max_depth=max_depth,
+            lossless=lossless,
+        )
+
+        raw_channels = len(header["component_order"])
+        raw_bytes = header["width"] * header["height"] * raw_channels
+        compressed_bytes = output_path.stat().st_size
+        ldch_bytes = output_path.read_bytes()
+
+    response = {
+        "filename": image.filename,
+        "raw_bytes": raw_bytes,
+        "raw_mebibytes": raw_bytes / (1024**2),
+        "compressed_bytes": compressed_bytes,
+        "compressed_mebibytes": compressed_bytes / (1024**2),
+        "lossless": bool(lossless),
+        "quality": int(quality),
+        "max_depth": int(max_depth),
+        "message": (
+            f"Raw YCbCr data size: {raw_bytes} bytes "
+            f"({raw_bytes / (1024**2):.2f} MiB) | "
+            f"Compressed container: {compressed_bytes} bytes "
+            f"({compressed_bytes / (1024**2):.2f} MiB)"
+        ),
+        "ldhc_base64": _base64_encode(ldch_bytes),
+    }
+    return JSONResponse(response)
+
+
+@app.post("/api/limited-depth/image/decode")
+async def limited_depth_image_decode(
+    bitstream: UploadFile = File(...),
+) -> JSONResponse:
+    """
+    Take a .ldhc container file, decode it to a JPEG image, and return the image bytes as base64.
+    """
+    payload = await bitstream.read()
+    if not payload:
+        raise HTTPException(status_code=400, detail="Empty bitstream payload")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir_path = Path(tmpdir)
+        ldch_path = tmpdir_path / (bitstream.filename or "upload.ldhc")
+        output_path = tmpdir_path / "decoded.jpg"
+        ldch_path.write_bytes(payload)
+
+        header = decode_image(ldch_path, output_path)
+        jpeg_bytes = output_path.read_bytes()
+
+    response = {
+        "filename": bitstream.filename,
+        "width": header["width"],
+        "height": header["height"],
+        "lossless": header.get("lossless", False),
+        "quality": header.get("quality"),
+        "decoded_base64": _base64_encode(jpeg_bytes),
+        "message": "Decoded image is returned as JPEG; base64 payload can be used directly as <img src=...>.",
+    }
+    return JSONResponse(response)

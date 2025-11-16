@@ -18,6 +18,39 @@ type AdaptiveStep = {
   tree: TreeNode[]
 }
 
+type ImageEncodeResult = {
+  filename: string
+  raw_bytes: number
+  raw_mebibytes: number
+  compressed_bytes: number
+  compressed_mebibytes: number
+  lossless: boolean
+  quality: number
+  max_depth: number
+  ldhc_base64: string
+  message: string
+}
+
+type ImageDecodeResult = {
+  filename: string
+  width: number
+  height: number
+  lossless: boolean
+  quality: number | null
+  decoded_base64: string
+  message: string
+}
+
+function base64ToBlob(base64: string, mimeType: string) {
+  const binary = atob(base64)
+  const len = binary.length
+  const bytes = new Uint8Array(len)
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binary.charCodeAt(i)
+  }
+  return new Blob([bytes], { type: mimeType })
+}
+
 const algorithms = [
   { id: 'depth-limited', label: 'Depth-Limited Huffman' },
   { id: 'adaptive', label: 'Adaptive Huffman' },
@@ -41,14 +74,21 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [datasetFile, setDatasetFile] = useState<File | null>(null)
+  const [imageEncodeResult, setImageEncodeResult] = useState<ImageEncodeResult | null>(null)
+  const [imageDecodeResult, setImageDecodeResult] = useState<ImageDecodeResult | null>(null)
 
-  const disabledMetrics = useMemo(
-    () => [
-      { label: 'avgCodeLen', value: '--' },
-      { label: 'compressionRatio', value: '--' },
-    ],
-    [],
-  )
+  const handleAlgorithmChange = (event: any) => {
+    const next = event.target.value
+    setSelectedAlgorithm(next)
+
+    // clear image-related state when switching tab
+    setDatasetFile(null)
+    setImageEncodeResult(null)
+    setImageDecodeResult(null)
+
+    // optional: also clear error
+    setError(null)
+  }
 
   const run = async () => {
     setLoading(true)
@@ -102,6 +142,76 @@ function App() {
       }
     } catch (e: any) {
       setError(e.message || 'Request failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const compressImage = async () => {
+    if (!datasetFile) {
+      setError('Please select an image file first')
+      return
+    }
+
+    setLoading(true)
+    setError(null)
+
+    try {
+      // 1) call encode API
+      const form = new FormData()
+      form.append('image', datasetFile)
+
+      const res = await fetch(`${API_BASE}/api/limited-depth/image/encode`, {
+        method: 'POST',
+        body: form,
+      })
+
+      const data = await res.json()
+      if (!res.ok || (data as any).error || (data as any).detail) {
+        throw new Error(
+          (data as any).error || (data as any).detail || `HTTP ${res.status}`,
+        )
+      }
+
+      const encodeResult = data as ImageEncodeResult
+      setImageEncodeResult(encodeResult)
+
+      // 2) call decode API with returned base64 container
+      if (encodeResult.ldhc_base64) {
+        const blob = base64ToBlob(
+          encodeResult.ldhc_base64,
+          'application/octet-stream',
+        )
+        const file = new File(
+          [blob],
+          (encodeResult.filename || 'compressed') + '.ldhc',
+          { type: 'application/octet-stream' },
+        )
+
+        const decodeForm = new FormData()
+        decodeForm.append('bitstream', file)
+
+        const decRes = await fetch(
+          `${API_BASE}/api/limited-depth/image/decode`,
+          {
+            method: 'POST',
+            body: decodeForm,
+          },
+        )
+        const decData = await decRes.json()
+        if (!decRes.ok || (decData as any).error || (decData as any).detail) {
+          throw new Error(
+            (decData as any).error ||
+              (decData as any).detail ||
+              `HTTP ${decRes.status}`,
+          )
+        }
+        setImageDecodeResult(decData as ImageDecodeResult)
+      } else {
+        setImageDecodeResult(null)
+      }
+    } catch (e: any) {
+      setError(e.message || 'Image compression failed')
     } finally {
       setLoading(false)
     }
@@ -203,7 +313,7 @@ function App() {
           <select
             id="algorithm"
             value={selectedAlgorithm}
-            onChange={(event) => setSelectedAlgorithm(event.target.value)}
+            onChange={handleAlgorithmChange}
           >
             {algorithms.map((algorithm) => (
               <option key={algorithm.id} value={algorithm.id}>
@@ -276,7 +386,16 @@ function App() {
           <button className="primary-btn" onClick={run} disabled={loading}>
             {loading ? 'Running…' : 'Run'}
           </button>
+          <button
+            className="ghost-btn"
+            onClick={compressImage}
+            disabled={loading || !datasetFile}
+            style={{ marginLeft: '12px' }}
+          >
+            {loading ? 'Working…' : 'Compress image'}
+          </button>
         </div>
+
       </section>
 
       <div className="content-grid">
@@ -363,38 +482,104 @@ function App() {
         </section>
 
         <aside className="side-column">
-          <section className="panel metrics-panel">
+        <section className="panel results-panel">
             <div className="panel-header">
-              <h2>Metrics</h2>
+              <h2>Compression Results</h2>
               <span className="panel-subtitle">
-                (Placeholder) Metrics will go here later
+                Image compression stats and file download
               </span>
             </div>
-            <div className="metric-cards">
-              {disabledMetrics.map((metric) => (
-                <article key={metric.label} className="metric-card">
-                  <span className="metric-label">{metric.label}</span>
-                  <span className="metric-value">{metric.value}</span>
+
+            {imageEncodeResult && (
+              <div className="metric-cards">
+                <article className="metric-card">
+                  <span className="metric-label">Filename</span>
+                  <span className="metric-value">
+                    {imageEncodeResult.filename}
+                  </span>
                 </article>
-              ))}
-            </div>
+
+                <article className="metric-card">
+                  <span className="metric-label">Raw size</span>
+                  <span className="metric-value">
+                    {imageEncodeResult.raw_bytes} bytes<br/>
+                    ({imageEncodeResult.raw_mebibytes.toFixed(2)} MiB)
+                    </span>
+                </article>
+
+                <article className="metric-card">
+                  <span className="metric-label">Compressed size</span>
+                  <span className="metric-value">
+                    {imageEncodeResult.compressed_bytes} bytes <br/> 
+                    ({imageEncodeResult.compressed_mebibytes.toFixed(2)} MiB)
+                  </span>
+                </article>
+
+                <article className="metric-card">
+                  <span className="metric-label">Compression ratio</span>
+                  <span className="metric-value">
+                    {(
+                      imageEncodeResult.raw_bytes /
+                      imageEncodeResult.compressed_bytes
+                    ).toFixed(2)}
+                    ×
+                  </span>
+                </article>
+
+                <article className="metric-card">
+                  <span className="metric-label">Download compressed</span>
+                  <span className="metric-value">
+                    <a
+                      href={`data:application/octet-stream;base64,${imageEncodeResult.ldhc_base64}`}
+                      download={(imageEncodeResult.filename || 'image') + '.ldhc'}
+                    >
+                      Download .ldhc
+                    </a>
+                  </span>
+                </article>
+              </div>
+            )}
           </section>
 
-          <section className="panel charts-panel">
+          <section className="panel decoded-panel">
             <div className="panel-header">
-              <h2>Charts</h2>
+              <h2>Decoded Image Preview</h2>
               <span className="panel-subtitle">
-                (Placeholder) Compare against baseline algorithms
+                Decoded image preview from the compressed file
               </span>
             </div>
-            <div className="chart-stack">
-              <div className="chart-placeholder">
-                <span>avgCodeLen vs baseline</span>
+
+            {!imageDecodeResult && (
+              <div className="chart-stack">
+                <div className="chart-placeholder">
+                  <span>No decoded image yet.</span>
+                </div>
               </div>
-              <div className="chart-placeholder">
-                <span>compressionRatio vs baseline</span>
+            )}
+
+            {imageDecodeResult && (
+              <div className="chart-stack">
+                <div className="chart-placeholder" style={{ flexDirection: 'column', gap: '0.75rem' }}>
+                  <img
+                    src={`data:image/jpeg;base64,${imageDecodeResult.decoded_base64}`}
+                    alt="Decoded"
+                    style={{ maxWidth: '100%', borderRadius: 12 }}
+                  />
+
+                  <a
+                    href={`data:image/jpeg;base64,${imageDecodeResult.decoded_base64}`}
+                    download={(imageDecodeResult.filename || 'decoded') + '.jpg'}
+                    style={{
+                      fontWeight: 600,
+                      textDecoration: 'none',
+                      color: '#4a54ff',
+                    }}
+                  >
+                    Download decoded JPEG
+                  </a>
+                </div>
               </div>
-            </div>
+            )}
           </section>
         </aside>
       </div>
@@ -565,22 +750,18 @@ function AdaptiveTreeSVG({
   }, [nodes])
 
   // children sorted by weight (small -> large) for layout
-  function getChildrenSorted(id: string): string[] {
+  function getChildren(id: string): string[] {
     const node = nodeMap.get(id)!
     const children: string[] = []
     if (node.left) children.push(node.left)
     if (node.right) children.push(node.right)
-    children.sort((aId, bId) => {
-      const aw = nodeMap.get(aId)!.weight
-      const bw = nodeMap.get(bId)!.weight
-      return aw - bw
-    })
     return children
-  }
+}
+  
 
   // collect leaves in left-to-right order based on sorted children
   function collectLeaves(id: string, acc: string[]) {
-    const children = getChildrenSorted(id)
+    const children = getChildren(id)
     if (children.length === 0) {
       acc.push(id)
       return
@@ -599,7 +780,7 @@ function AdaptiveTreeSVG({
   // compute x-position using leaf order
   function computeX(id: string): number {
     const node = nodeMap.get(id)!
-    const children = getChildrenSorted(id)
+    const children = getChildren(id)
     if (children.length === 0) return leafX.get(id)!
     const xs = children.map((childId) => computeX(childId))
     const minX = Math.min(...xs)
@@ -615,7 +796,7 @@ function AdaptiveTreeSVG({
     const x = computeX(id) * horizontalScale + 80
     const y = depth * verticalGap + 60
     positions.set(id, { x, y })
-    const children = getChildrenSorted(id)
+    const children = getChildren(id)
     for (const childId of children) {
       assignPos(childId, depth + 1)
     }
@@ -626,7 +807,7 @@ function AdaptiveTreeSVG({
   // build edges using sorted children so they match the layout
   const edges: Array<{ from: string; to: string }> = []
   nodes.forEach((n) => {
-    const children = getChildrenSorted(n.id)
+    const children = getChildren(n.id)
     children.forEach((childId) => {
       edges.push({ from: n.id, to: childId })
     })

@@ -243,6 +243,68 @@ class VitterAdaptiveHuffmanTree(PrefixFreeTree):
     def bits_to_byte(self, bits):
         return int(bits, 2)
 
+    # ----------------------------------------------------------
+    # Snapshot for visualization
+    # ----------------------------------------------------------
+    def export_tree_snapshot(self):
+        if self.root_node is None:
+            raise ValueError("Tree is empty")
+
+        nodes = []
+        internal_counter = 1
+
+        def _dfs(node, depth):
+            nonlocal internal_counter
+
+            if node.is_leaf_node:
+                if node.is_nyt():
+                    nid = "NYT"
+                else:
+                    nid = str(node.id)
+
+                w = float(node.weight)
+
+                nodes.append(
+                    {
+                        "id": nid,
+                        "weight": w,
+                        "depth": depth,
+                        "left": None,
+                        "right": None,
+                        "is_leaf": True,
+                        "implicit_num": getattr(node, "implicit_num", None),
+                    }
+                )
+                return nid, w
+
+            left_id, left_w = _dfs(node.left_child, depth + 1)
+            right_id, right_w = _dfs(node.right_child, depth + 1)
+
+            if depth == 0:
+                nid = "*"
+            else:
+                nid = f"N{internal_counter}"
+                internal_counter += 1
+
+            total_w = left_w + right_w
+
+            nodes.append(
+                {
+                    "id": nid,
+                    "weight": total_w,
+                    "depth": depth,
+                    "left": left_id,
+                    "right": right_id,
+                    "is_leaf": False,
+                    "implicit_num": getattr(node, "implicit_num", None),
+                }
+            )
+            return nid, total_w
+
+        root_id, _ = _dfs(self.root_node, 0)
+        ordered = list(reversed(nodes))
+
+        return {"root": root_id, "tree": ordered}
 
 class VitterAdaptiveHuffmanEncoder(VitterAdaptiveHuffmanTree):
 
@@ -261,6 +323,44 @@ class VitterAdaptiveHuffmanEncoder(VitterAdaptiveHuffmanTree):
                 self.update(None, b)
             # self.print_tree()
         return ''.join(bits)
+    
+    def encode_with_trace(self, data: bytes):
+        bit_chunks = []
+        steps = []
+        step_idx = 0
+
+        for b in data:
+            if b in self.leaves:
+                code = self.get_code(self.leaves[b])
+                bit_chunks.append(code)
+                self.update(self.leaves[b], b)
+                action = "existing"
+            else:
+                code_nyt = self.get_code(self.nyt)
+                sym_bits = self.byte_to_bits(b)
+                bit_chunks.append(code_nyt + sym_bits)
+                self.update(None, b)
+                action = "new"
+
+            step_idx += 1
+            snapshot = self.export_tree_snapshot()
+            for n in snapshot["tree"]:
+                n["build_index"] = step_idx
+
+            steps.append(
+                {
+                    "step": step_idx,
+                    "symbol": int(b),
+                    "action": action,
+                    "tree": snapshot["tree"],
+                }
+            )
+
+        return {
+            "steps": steps,
+            "bitstream": ''.join(bit_chunks),
+            "max_step": step_idx,
+        }
     
 class VitterAdaptiveHuffmanDecoder(VitterAdaptiveHuffmanTree):
 
