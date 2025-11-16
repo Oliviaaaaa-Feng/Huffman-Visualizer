@@ -2,11 +2,11 @@ from scl.utils.tree_utils import BinaryNode
 from scl.compressors.prefix_free_compressors import PrefixFreeTree
 
 class VitterNode(BinaryNode):
-    def __init__(self, symbol=None, weight=0):
+    def __init__(self, symbol=None, weight=0, implicit_num=511):
         super().__init__(id=symbol)
         self.weight = weight
         self.parent = None
-        self.implicit_num = 511
+        self.implicit_num = implicit_num
     
     def is_nyt(self):
         return (self.weight == 0) and (self.is_leaf_node)
@@ -18,14 +18,11 @@ class VitterAdaptiveHuffmanTree(PrefixFreeTree):
     def __init__(self, alphabet_size=256, symbol_bits=8):
         self.alphabet_size = alphabet_size
         self.symbol_bits = symbol_bits
-        self.root_node = VitterNode()
+        self.root_node = VitterNode(implicit_num=2 * alphabet_size - 1) # the maximum number of nodes of a binary tree with n leaves is 2n-1
         self.nyt = self.root_node
         self.leaves = {}        # symbol -> leaf node
-        # self.blocks = {0: (self.root_node, self.root_node)}  # weight -> (head, tail)
-        self.blocks_leaf = {0: [self.root_node]}  # weight -> (head, tail)
-        self.blocks_internal = {}  # weight -> (head, tail) for internal nodes
-        self.head = self.root_node   # linked list head (lowest order)
-        self.tail = self.root_node   # linked list tail (highest order)
+        self.blocks_leaf = {0: [self.root_node]}  # weight -> [list of leaf nodes in ascending implicit number]
+        self.blocks_internal = {}  # weight -> [list of internal nodes in ascending implicit number]
 
     # ----------------------------------------------------------
     # Linked-list and block helpers
@@ -87,21 +84,8 @@ class VitterAdaptiveHuffmanTree(PrefixFreeTree):
     # Core algorithm: slide and increment
     # ----------------------------------------------------------
     def slide_and_increment(self, node):
-        # wt = node.weight
-        # if_slide = False
+        # reference: Vitter, J. S. (1987). Design and analysis of dynamic Huffman codes. page 839
         prev_parent = node.parent # previous parent
-        # if node.is_leaf_node:
-        #     if wt in self.blocks_internal:
-        #         leader = self.blocks_internal[wt][-1]
-        #         if_slide = True
-        # else:
-        #     if wt + 1 in self.blocks_leaf:
-        #         leader = self.blocks_leaf[wt + 1][-1]
-        #         if_slide = True
-        # if if_slide and leader is not node:
-        #     # self.swap_nodes(node, leader)
-        #     self.slide_nodes(node)
-        #     # move node to next block
         self.slide_nodes(node)
         self.remove_from_block(node)
         node.weight += 1
@@ -113,6 +97,7 @@ class VitterAdaptiveHuffmanTree(PrefixFreeTree):
             return prev_parent
     
     def update(self, node, sym):
+        # reference: Vitter, J. S. (1987). Design and analysis of dynamic Huffman codes. page 839
         leaf2incrment = None
         if node is None:
             # new symbol
@@ -183,7 +168,6 @@ class VitterAdaptiveHuffmanTree(PrefixFreeTree):
             block_to_slide = [node for node in block_to_slide if node.implicit_num > a.implicit_num]
             for node in block_to_slide:
                 self.swap_nodes(a, node)
-                # node.implicit_num -= 1
         
 
     def swap_nodes(self, a, b):
@@ -396,7 +380,7 @@ class VitterAdaptiveHuffmanDecoder(VitterAdaptiveHuffmanTree):
                 self.update(None, sym)
                 out.append(sym)
             else:
-                
+                # existing symbol
                 sym = node.id
                 out.append(sym)
                 self.update(node, sym)
