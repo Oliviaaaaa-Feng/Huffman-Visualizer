@@ -780,7 +780,6 @@ function AdaptiveTreeSVG({
 
   // compute x-position using leaf order
   function computeX(id: string): number {
-    const node = nodeMap.get(id)!
     const children = getChildren(id)
     if (children.length === 0) return leafX.get(id)!
     const xs = children.map((childId) => computeX(childId))
