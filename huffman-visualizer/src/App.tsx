@@ -9,6 +9,7 @@ type TreeNode = {
   depth: number
   left?: string | null
   right?: string | null
+  implicit_num?: number
 }
 
 type AdaptiveStep = {
@@ -880,11 +881,23 @@ function AdaptiveTreeSVG({
               strokeWidth={2}
             />
 
+            {/* Implicit number (top-right) */}
+            <text
+              x={boxW / 2 - 4}
+              y={-boxH / 2 + 12}
+              fontSize={11}
+              fill="#777"
+              textAnchor="end"
+            >
+              {n.implicit_num}
+            </text>
+
             {/* Node ID */}
             <text y={-4} fontSize={14} fontWeight={600} fill="#222339">
               {n.id}
             </text>
 
+            {/* Weight */}
             <text
               y={14}
               fontSize={12}
