@@ -15,6 +15,9 @@ from scl.compressors.limited_depth_image_codec import encode_image, decode_image
 
 app = FastAPI()
 
+@app.get("/")
+def read_root():
+    return {"status": "ok", "message": "Huffman Visualizer backend is running"}
 
 def _base64_encode(data: bytes) -> str:
     return base64.b64encode(data).decode("ascii")
