@@ -59,6 +59,7 @@ const algorithms = [
 
 function App() {
   const [selectedAlgorithm, setSelectedAlgorithm] = useState(algorithms[0].id)
+  const [dlMode, setDlMode] = useState<'tree' | 'image'>('tree')
 
   // depth-limited state
   const [lmax, setLmax] = useState(4)
@@ -77,6 +78,7 @@ function App() {
   const [datasetFile, setDatasetFile] = useState<File | null>(null)
   const [imageEncodeResult, setImageEncodeResult] = useState<ImageEncodeResult | null>(null)
   const [imageDecodeResult, setImageDecodeResult] = useState<ImageDecodeResult | null>(null)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
 
   const handleAlgorithmChange = (event: any) => {
     const next = event.target.value
@@ -222,6 +224,17 @@ function App() {
   const isAdaptive = selectedAlgorithm === 'adaptive'
 
   useEffect(() => {
+    if (!datasetFile) {
+      setPreviewUrl(null)
+      return
+    }
+    const url = URL.createObjectURL(datasetFile)
+    setPreviewUrl(url)
+
+    return () => URL.revokeObjectURL(url)
+  }, [datasetFile])
+
+  useEffect(() => {
     if (
       !isAdaptive ||
       !adaptiveSteps ||
@@ -291,7 +304,7 @@ function App() {
       <header className="page-header">
         <div>
           <h1>Huffman Visualizer</h1>
-          <p>Configure the algorithm, upload a dataset, and watch the tree build itself.</p>
+          <p>An interactive workbench for understanding Huffman algorithms.</p>
         </div>
         <button
           className="primary-btn"
@@ -324,22 +337,29 @@ function App() {
           </select>
         </div>
 
-        <div className="control-group">
-          <label htmlFor="dataset">Dataset</label>
-          <label className="file-input">
-            <input
-              id="dataset"
-              type="file"
-              onChange={(event) => {
-                const file = event.target.files?.[0] ?? null
-                setDatasetFile(file)
-              }}
-            />
-            <span>{datasetFile ? datasetFile.name : 'Select file'}</span>
-          </label>
-        </div>
-
         {isDepthLimited && (
+          <div className="control-group">
+            <label>Task Type</label>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button 
+                className="ghost-btn"
+                onClick={() => setDlMode('tree')}
+                style={dlMode === 'tree' ? { background: '#dcd6ff', borderColor: '#6156ff', color: '#6156ff' } : {}}
+              >
+                Tree View
+              </button>
+              <button 
+                className="ghost-btn"
+                onClick={() => setDlMode('image')}
+                style={dlMode === 'image' ? { background: '#dcd6ff', borderColor: '#6156ff', color: '#6156ff' } : {}}
+              >
+                Image Compression
+              </button>
+            </div>
+          </div>
+        )}
+
+        {isDepthLimited && dlMode === 'tree' && (
           <>
             <div className="control-group">
               <label htmlFor="probabilities">Probabilities</label>
@@ -367,222 +387,264 @@ function App() {
                 <span>{lmax}</span>
               </div>
             </div>
+
+            <div className="control-group run-group">
+              <button className="primary-btn" onClick={run} disabled={loading}>
+                {loading ? 'Running…' : 'Run'}
+              </button>
+            </div>
+          </>
+        )}
+
+        {isDepthLimited && dlMode === 'image' && (
+          <>
+            <div className="control-group">
+              <label htmlFor="dataset">Image File</label>
+              <label className="file-input">
+                <input
+                  id="dataset"
+                  type="file"
+                  accept="image/*"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null
+                    setDatasetFile(file)
+                  }}
+                />
+                <span>{datasetFile ? datasetFile.name : 'Select Image'}</span>
+              </label>
+            </div>
+            
+            <div className="control-group run-group">
+               <button
+                className="primary-btn"
+                onClick={compressImage}
+                disabled={loading || !datasetFile}
+              >
+                {loading ? 'Working…' : 'Compress'}
+              </button>
+            </div>
           </>
         )}
 
         {isAdaptive && (
-          <div className="control-group">
-            <label htmlFor="adaptiveText">Input text</label>
-            <input
-              id="adaptiveText"
-              type="text"
-              placeholder="ABRACADABRA"
-              value={adaptiveText}
-              onChange={(event) => setAdaptiveText(event.target.value)}
-            />
-          </div>
+          <>
+            <div className="control-group">
+              <label htmlFor="adaptiveText">Input text</label>
+              <input
+                id="adaptiveText"
+                type="text"
+                placeholder="ABRACADABRA"
+                value={adaptiveText}
+                onChange={(event) => setAdaptiveText(event.target.value)}
+              />
+            </div>
+
+            <div className="control-group run-group">
+              <button className="primary-btn" onClick={run} disabled={loading}>
+                {loading ? 'Running…' : 'Run'}
+              </button>
+            </div>
+          </>
         )}
-
-        <div className="control-group run-group">
-          <button className="primary-btn" onClick={run} disabled={loading}>
-            {loading ? 'Running…' : 'Run'}
-          </button>
-          <button
-            className="ghost-btn"
-            onClick={compressImage}
-            disabled={loading || !datasetFile}
-            style={{ marginLeft: '12px' }}
-          >
-            {loading ? 'Working…' : 'Compress image'}
-          </button>
-        </div>
-
       </section>
 
       <div className="content-grid">
-        <section className="panel tree-panel">
-          <div className="panel-header">
-            <h2>Tree View</h2>
-            <span className="panel-subtitle">
-              {isDepthLimited
-                ? 'Huffman tree built from the given probability distribution'
-                : 'Adaptive Huffman tree as it evolves over time'}
-            </span>
-          </div>
+        { (isAdaptive || (isDepthLimited && dlMode === 'tree')) && (
+          <section className="panel tree-panel" style={{ gridColumn: '1 / -1' }}>
+            <div className="panel-header">
+              <h2>Tree View</h2>
+              <span className="panel-subtitle">
+                {isDepthLimited
+                  ? 'Huffman tree built from the given probability distribution'
+                  : 'Adaptive Huffman tree as it evolves over time'}
+              </span>
+            </div>
 
-          <div className="tree-canvas">
-            {error && <div className="error">{error}</div>}
-            {!error && isDepthLimited && !tree && (
-              <div className="placeholder">Click Run to build the tree</div>
-            )}
-            {!error && isDepthLimited && tree && <TreeSVG nodes={tree} />}
-            {!error && isAdaptive && !adaptiveSteps && (
-              <div className="placeholder">
-                Enter a short text (e.g., ABRACADABRA) and click Run
-              </div>
-            )}
-            {!error && isAdaptive && adaptiveSteps && currentAdaptiveStep && (
-              <AdaptiveTreeSVG
-                step={currentAdaptiveStep}
-                previousStep={previousAdaptiveStep}
-              />
-            )}
-          </div>
-
-          {isAdaptive && adaptiveSteps && adaptiveSteps.length > 0 && currentAdaptiveStep && (
-            <>
-              <div className="tree-steps">
-                <button className="ghost-btn" onClick={goToPrevStep}>
-                  ◀ Prev
-                </button>
-
-                <span className="step-label">
-                  Step {adaptiveCurrentStepIndex + 1} / {adaptiveSteps.length}
-                </span>
-
-
-                <button className="ghost-btn" onClick={goToNextStep}>
-                  Next ▶
-                </button>
-
-                <button
-                  className="ghost-btn"
-                  onClick={replayAdaptive}
-                  style={{ marginLeft: '12px' }}
-                >
-                  {isAdaptivePlaying ? 'Playing…' : 'Replay'}
-                </button>
-              </div>
-
-              <div className="step-list">
-                {adaptiveSteps.map((s, idx) => (
-                  <button
-                    key={s.step}
-                    className={
-                      idx === adaptiveCurrentStepIndex
-                        ? 'step-chip step-chip-active'
-                        : 'step-chip'
-                    }
-                    onClick={() => goToStep(idx)}
-                  >
-                    {idx + 1}
-                  </button>
-                ))}
-              </div>
-
-              {adaptiveBitstream && (
-                <div className="bitstream-box">
-                  <div className="bitstream-label">Encoded bitstream</div>
-                  <div className="bitstream-content">
-                    <code>{adaptiveBitstream}</code>
-                  </div>
+            <div className="tree-canvas">
+              {error && <div className="error">{error}</div>}
+              {!error && isDepthLimited && !tree && (
+                <div className="placeholder">Click Run to build the tree</div>
+              )}
+              {!error && isDepthLimited && tree && <TreeSVG nodes={tree} />}
+              {!error && isAdaptive && !adaptiveSteps && (
+                <div className="placeholder">
+                  Enter a short text (e.g., ABRACADABRA) and click Run
                 </div>
               )}
-            </>
-          )}
-        </section>
-
-        <aside className="side-column">
-        <section className="panel results-panel">
-            <div className="panel-header">
-              <h2>Compression Results</h2>
-              <span className="panel-subtitle">
-                Image compression stats and file download
-              </span>
+              {!error && isAdaptive && adaptiveSteps && currentAdaptiveStep && (
+                <AdaptiveTreeSVG
+                  step={currentAdaptiveStep}
+                  previousStep={previousAdaptiveStep}
+                />
+              )}
             </div>
 
-            {imageEncodeResult && (
-              <div className="metric-cards">
-                <article className="metric-card">
-                  <span className="metric-label">Filename</span>
-                  <span className="metric-value">
-                    {imageEncodeResult.filename}
+            {isAdaptive && adaptiveSteps && adaptiveSteps.length > 0 && currentAdaptiveStep && (
+              <>
+                <div className="tree-steps">
+                  <button className="ghost-btn" onClick={goToPrevStep}>◀ Prev</button>
+                  <span className="step-label">
+                    Step {adaptiveCurrentStepIndex + 1} / {adaptiveSteps.length}
                   </span>
-                </article>
-
-                <article className="metric-card">
-                  <span className="metric-label">Raw size</span>
-                  <span className="metric-value">
-                    {imageEncodeResult.raw_bytes} bytes<br/>
-                    ({imageEncodeResult.raw_mebibytes.toFixed(2)} MiB)
-                    </span>
-                </article>
-
-                <article className="metric-card">
-                  <span className="metric-label">Compressed size</span>
-                  <span className="metric-value">
-                    {imageEncodeResult.compressed_bytes} bytes <br/> 
-                    ({imageEncodeResult.compressed_mebibytes.toFixed(2)} MiB)
-                  </span>
-                </article>
-
-                <article className="metric-card">
-                  <span className="metric-label">Compression ratio</span>
-                  <span className="metric-value">
-                    {(
-                      imageEncodeResult.raw_bytes /
-                      imageEncodeResult.compressed_bytes
-                    ).toFixed(2)}
-                    ×
-                  </span>
-                </article>
-
-                <article className="metric-card">
-                  <span className="metric-label">Download compressed</span>
-                  <span className="metric-value">
-                    <a
-                      href={`data:application/octet-stream;base64,${imageEncodeResult.ldhc_base64}`}
-                      download={(imageEncodeResult.filename || 'image') + '.ldhc'}
-                    >
-                      Download .ldhc
-                    </a>
-                  </span>
-                </article>
-              </div>
-            )}
-          </section>
-
-          <section className="panel decoded-panel">
-            <div className="panel-header">
-              <h2>Decoded Image Preview</h2>
-              <span className="panel-subtitle">
-                Decoded image preview from the compressed file
-              </span>
-            </div>
-
-            {!imageDecodeResult && (
-              <div className="chart-stack">
-                <div className="chart-placeholder">
-                  <span>No decoded image yet.</span>
-                </div>
-              </div>
-            )}
-
-            {imageDecodeResult && (
-              <div className="chart-stack">
-                <div className="chart-placeholder" style={{ flexDirection: 'column', gap: '0.75rem' }}>
-                  <img
-                    src={`data:image/jpeg;base64,${imageDecodeResult.decoded_base64}`}
-                    alt="Decoded"
-                    style={{ maxWidth: '100%', borderRadius: 12 }}
-                  />
-
-                  <a
-                    href={`data:image/jpeg;base64,${imageDecodeResult.decoded_base64}`}
-                    download={(imageDecodeResult.filename || 'decoded') + '.jpg'}
-                    style={{
-                      fontWeight: 600,
-                      textDecoration: 'none',
-                      color: '#4a54ff',
-                    }}
+                  <button className="ghost-btn" onClick={goToNextStep}>Next ▶</button>
+                  <button
+                    className="ghost-btn"
+                    onClick={replayAdaptive}
+                    style={{ marginLeft: '12px' }}
                   >
-                    Download decoded JPEG
-                  </a>
+                    {isAdaptivePlaying ? 'Playing…' : 'Replay'}
+                  </button>
                 </div>
-              </div>
+
+                <div className="step-list">
+                  {adaptiveSteps.map((s, idx) => (
+                    <button
+                      key={s.step}
+                      className={
+                        idx === adaptiveCurrentStepIndex
+                          ? 'step-chip step-chip-active'
+                          : 'step-chip'
+                      }
+                      onClick={() => goToStep(idx)}
+                    >
+                      {idx + 1}
+                    </button>
+                  ))}
+                </div>
+
+                {adaptiveBitstream && (
+                  <div className="bitstream-box">
+                    <div className="bitstream-label">Encoded bitstream</div>
+                    <div className="bitstream-content">
+                      <code>{adaptiveBitstream}</code>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </section>
-        </aside>
+        )}
+
+        {isDepthLimited && dlMode === 'image' && (
+          <>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              
+              <section className="panel original-panel">
+                <div className="panel-header">
+                  <h2>Original Image</h2>
+                  <span className="panel-subtitle">The source image you uploaded</span>
+                </div>
+                <div className="chart-stack">
+                  {previewUrl ? (
+                    <div className="chart-placeholder" style={{ flexDirection: 'column', height: 'auto', padding: '1rem' }}>
+                      <img
+                        src={previewUrl}
+                        alt="Original"
+                        style={{ maxWidth: '100%', maxHeight: '400px', objectFit: 'contain', borderRadius: 12 }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="chart-placeholder">
+                      <span>No image selected</span>
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <section className="panel decoded-panel">
+                <div className="panel-header">
+                  <h2>Decoded Preview</h2>
+                  <span className="panel-subtitle">Reconstructed from .ldhc</span>
+                </div>
+
+                {imageDecodeResult ? (
+                  <div className="chart-stack">
+                    <div className="chart-placeholder" style={{ flexDirection: 'column', gap: '0.75rem', height: 'auto', padding: '1rem' }}>
+                      <img
+                        src={`data:image/jpeg;base64,${imageDecodeResult.decoded_base64}`}
+                        alt="Decoded"
+                        style={{ maxWidth: '100%', maxHeight: '400px', objectFit: 'contain', borderRadius: 12 }}
+                      />
+                      <a
+                        href={`data:image/jpeg;base64,${imageDecodeResult.decoded_base64}`}
+                        download={(imageDecodeResult.filename || 'decoded') + '.jpg'}
+                        style={{ fontWeight: 600, textDecoration: 'none', color: '#4a54ff' }}
+                      >
+                        Download JPEG
+                      </a>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="chart-stack">
+                    <div className="chart-placeholder">
+                      <span>No decoded image yet.</span>
+                    </div>
+                  </div>
+                )}
+              </section>
+            </div>
+
+            <section className="panel results-panel">
+              <div className="panel-header">
+                <h2>Compression Results</h2>
+                <span className="panel-subtitle">Stats and file download</span>
+              </div>
+
+              {error && <div className="error">{error}</div>}
+
+              {imageEncodeResult && (
+                <div className="metric-cards" style={{ marginTop: '1.5rem', gridTemplateColumns: '1fr' }}> 
+                  
+                  <article className="metric-card">
+                    <span className="metric-label">Filename</span>
+                    <span className="metric-value">{imageEncodeResult.filename}</span>
+                  </article>
+
+                  <article className="metric-card">
+                    <span className="metric-label">Raw size</span>
+                    <span className="metric-value">
+                      {imageEncodeResult.raw_bytes} bytes<br />
+                      ({imageEncodeResult.raw_mebibytes.toFixed(2)} MiB)
+                    </span>
+                  </article>
+
+                  <article className="metric-card">
+                    <span className="metric-label">Compressed size</span>
+                    <span className="metric-value">
+                      {imageEncodeResult.compressed_bytes} bytes <br />
+                      ({imageEncodeResult.compressed_mebibytes.toFixed(2)} MiB)
+                    </span>
+                  </article>
+
+                  <article className="metric-card">
+                    <span className="metric-label">Compression ratio</span>
+                    <span className="metric-value">
+                      {(imageEncodeResult.raw_bytes / imageEncodeResult.compressed_bytes).toFixed(2)}×
+                    </span>
+                  </article>
+
+                  <article className="metric-card">
+                    <span className="metric-label">Download</span>
+                    <span className="metric-value">
+                      <a
+                        href={`data:application/octet-stream;base64,${imageEncodeResult.ldhc_base64}`}
+                        download={(imageEncodeResult.filename || 'image') + '.ldhc'}
+                      >
+                        Download .ldhc
+                      </a>
+                    </span>
+                  </article>
+                </div>
+              )}
+
+              {!imageEncodeResult && !error && (
+                <div className="chart-placeholder">
+                  <span>Upload an image and click Compress to see results</span>
+                </div>
+              )}
+            </section>
+          </>
+        )}
       </div>
     </div>
   )
