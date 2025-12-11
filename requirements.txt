@@ -1,0 +1,7 @@
+bitarray
+numpy
+pillow
+pytest
+scipy
+typing_extensions
+zstandard
