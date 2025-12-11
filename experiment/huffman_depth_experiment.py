@@ -93,7 +93,8 @@ def run_baseline(input_path: Path, verify: bool = True) -> None:
     print(f"Compression ratio (compressed/raw): {ratio_str}")
 
     # Dump summary and full code table to a file for later use.
-    output_path = Path("experiment/output/huffman_baseline.txt")
+    stem = input_path.stem
+    output_path = Path(f"experiment/output/huffman_baseline_{stem}.txt")
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     tree = HuffmanTree(prob_dist)
@@ -161,7 +162,8 @@ def run_depth_sweep(input_path: Path, depths: List[int], verify: bool = True) ->
     raw_bits = data_block.size * 8
     prob_dist = build_prob_dist(data_block)
 
-    output_dir = Path("experiment/output/depth_runs")
+    stem = input_path.stem
+    output_dir = Path(f"experiment/output/depth_runs_{stem}")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     results = []
@@ -211,7 +213,7 @@ def run_depth_sweep(input_path: Path, depths: List[int], verify: bool = True) ->
     return results
 
 
-def plot_depth_vs_ratio(results: List[dict], baseline_ratio: float) -> None:
+def plot_depth_vs_ratio(results: List[dict], baseline_ratio: float, label: str) -> None:
     """Plot compression ratio vs depth and save to output/plot using matplotlib."""
     try:
         import matplotlib.pyplot as plt  # type: ignore
@@ -235,7 +237,7 @@ def plot_depth_vs_ratio(results: List[dict], baseline_ratio: float) -> None:
     plt.axhline(baseline_ratio, color="red", linestyle="--", label="Baseline Huffman", linewidth=2)
     plt.xlabel("Depth limit")
     plt.ylabel("Compression ratio (compressed/raw)")
-    plt.title("Depth limit vs compression ratio (Sherlock ASCII)")
+    plt.title(f"Depth limit vs compression ratio ({label})")
     plt.grid(True, linestyle="--", alpha=0.6)
     plt.legend()
 
@@ -243,7 +245,7 @@ def plot_depth_vs_ratio(results: List[dict], baseline_ratio: float) -> None:
     for d, r in zip(depths, ratios):
         plt.annotate(f"{r:.3f}", (d, r), textcoords="offset points", xytext=(0, -12), ha="center")
 
-    out_path = plot_dir / "depth_vs_ratio.png"
+    out_path = plot_dir / f"depth_vs_ratio_{label}.png"
     plt.tight_layout()
     plt.savefig(out_path, dpi=150)
     plt.close()
@@ -278,10 +280,11 @@ def main(argv: List[str] | None = None) -> None:
     args = parse_args(argv)
     verify = not args.no_verify
     depths = [int(d.strip()) for d in args.depths.split(",") if d.strip()]
+    stem = args.input.stem
 
     baseline = run_baseline(args.input, verify=verify)
     depth_results = run_depth_sweep(args.input, depths=depths, verify=verify)
-    plot_depth_vs_ratio(depth_results, baseline_ratio=baseline["ratio"])
+    plot_depth_vs_ratio(depth_results, baseline_ratio=baseline["ratio"], label=stem)
 
 
 if __name__ == "__main__":
